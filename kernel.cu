@@ -156,28 +156,11 @@ int Ord2(int x, int y, int nx){
 	return y * nx + x;
 }
 
-__device__ int d_Ord2(int x, int y, int nx){
-	return y * nx + x;
-}
-
-__device__ void d_Ord2r(int id, int *x, int *y, int nx){
-	*y = id / nx;
-	*x = id % nx;
-	return;
-}
-
 double Cfeq(double u[2], double rho, int k){
 	double v1 = e[k * 2] * u[0] + e[k * 2 + 1] * u[1];
 	double v2 = u[0] * u[0] + u[1] * u[1];
 	return (rho * w[k] * (1.0 + v1 / (*CS2) + v1 * v1 / (2. * (*CS2)\
 		* (*CS2)) - v2 / (2. * (*CS2))));
-}
-
-__device__ double d_Cfeq(double u[2], double rho, int k){
-	double v1 = dev_e[k * 2] * u[0] + dev_e[k * 2 + 1] * u[1];
-	double v2 = u[0] * u[0] + u[1] * u[1];
-	return (rho * dev_w[k] * (1.0 + v1 / (*dev_CS2) + v1 * v1 / (2.\
-		* (*dev_CS2) * (*dev_CS2)) - v2 / (2. * (*dev_CS2))));
 }
 
 void Init(){
@@ -195,10 +178,51 @@ void Init(){
 			domain[Ord2(i, j, NX)].u[0] = (j == NY - 1) ? U0 : 0.;
 			domain[Ord2(i, j, NX)].u[1] = 0.;
 			for (int k = 0; k < Q; k++)
-				domain[Ord2(i, j, NX)].f[k] = Cfeq(domain[Ord2(i, j, NX)].u,\
-					domain[Ord2(i, j, NX)].rho, k);
+				domain[Ord2(i, j, NX)].f[k] = Cfeq(domain[Ord2(i, j, NX)].u, \
+				domain[Ord2(i, j, NX)].rho, k);
 		}
 	return;
+}
+
+void OutWatch(int t, double err, double rhoav){
+	printf("Time Step %d, ", t);
+	printf("Error = %lf, ", err);
+	printf("Average Density = %lf\n", rhoav);
+}
+
+void Outp(){
+	FILE *fp = fopen(OUTPUTFILENAME, "w");
+	fprintf(fp, "Title=\"LBM Lid Driven Cavity\"\n");
+	fprintf(fp, "VARIABLES=\"X\",\"Y\",\"U\",\"V\",\"P\",\"OMG\"\n");
+	fprintf(fp, "ZONE T=\"BOX\",I=%d,J=%d,F=POINT\n", NX, NY);
+	for (int j = 0; j < NY; j++)
+		for (int i = 0; i < NX; i++){
+			fprintf(fp, "%lf ", (double)i / (NX - 1) / DX);
+			fprintf(fp, "%lf ", (double)j / (NY - 1) / DY);
+			fprintf(fp, "%lf ", domain[Ord2(i, j, NX)].u[0]);
+			fprintf(fp, "%lf ", domain[Ord2(i, j, NX)].u[1]);
+			fprintf(fp, "%lf ", domain[Ord2(i, j, NX)].rho * (*CS2));
+			fprintf(fp, "%lf\n", domain[Ord2(i, j, NX)].vor);
+		}
+	fclose(fp);
+	return;
+}
+
+__device__ int d_Ord2(int x, int y, int nx){
+	return y * nx + x;
+}
+
+__device__ void d_Ord2r(int id, int *x, int *y, int nx){
+	*y = id / nx;
+	*x = id % nx;
+	return;
+}
+
+__device__ double d_Cfeq(double u[2], double rho, int k){
+	double v1 = dev_e[k * 2] * u[0] + dev_e[k * 2 + 1] * u[1];
+	double v2 = u[0] * u[0] + u[1] * u[1];
+	return (rho * dev_w[k] * (1.0 + v1 / (*dev_CS2) + v1 * v1 / (2.\
+		* (*dev_CS2) * (*dev_CS2)) - v2 / (2. * (*dev_CS2))));
 }
 
 __global__ void Collision(attribute *domain){
@@ -377,12 +401,6 @@ __global__ void Watch(attribute *domain, double *rhoav){
 	return;
 }
 
-void OutWatch(int t, double err, double rhoav){
-	printf("Time Step %d, ", t);
-	printf("Error = %lf, ", err);
-	printf("Average Density = %lf\n", rhoav);
-}
-
 __global__ void Cvor(attribute *domain){
 	int x, y;
 	int tid = threadIdx.x + blockIdx.x * blockDim.x;
@@ -396,23 +414,5 @@ __global__ void Cvor(attribute *domain){
 		}
 		tid += blockDim.x * gridDim.x;
 	}
-	return;
-}
-
-void Outp(){
-	FILE *fp = fopen(OUTPUTFILENAME, "w");
-	fprintf(fp, "Title=\"LBM Lid Driven Cavity\"\n");
-	fprintf(fp, "VARIABLES=\"X\",\"Y\",\"U\",\"V\",\"P\",\"OMG\"\n");
-	fprintf(fp, "ZONE T=\"BOX\",I=%d,J=%d,F=POINT\n", NX, NY);
-	for (int j = 0; j < NY; j++)
-		for (int i = 0; i < NX; i++){
-			fprintf(fp, "%lf ", (double)i / (NX - 1) / DX);
-			fprintf(fp, "%lf ", (double)j / (NY - 1) / DY);
-			fprintf(fp, "%lf ", domain[Ord2(i, j, NX)].u[0]);
-			fprintf(fp, "%lf ", domain[Ord2(i, j, NX)].u[1]);
-			fprintf(fp, "%lf ", domain[Ord2(i, j, NX)].rho * (*CS2));
-			fprintf(fp, "%lf\n", domain[Ord2(i, j, NX)].vor);
-		}
-	fclose(fp);
 	return;
 }
